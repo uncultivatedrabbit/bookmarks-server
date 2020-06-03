@@ -66,4 +66,43 @@ describe.only("Bookmark endpoint", function () {
       });
     });
   });
+
+  describe.only("POST /bookmark", () => {
+    it("creates an article, responding with 201 and the new article", function () {
+      const newBookmark = {
+        title: "Test new bookmark",
+        style: "Listicle",
+        content: "lorem ibsum etc",
+      };
+
+      return supertest(app)
+        .post("/bookmark")
+        .send(newBookmark)
+        .expect(201)
+        .expect((res) => {
+          expect(res.body.title).to.eql(newBookmark.title);
+          expect(res.body.style).to.eql(newBookmark.style);
+          expect(res.body.content).to.eql(newBookmark.content);
+          expect(res.body).to.have.property("id");
+          expect(res.headers.location).to.eql.apply(`/bookmarks/${res.body.id}`);
+        })
+        .then((postRes) =>
+          supertest(app)
+            .get(`/bookmarks/${postRes.body.id}`)
+            .expect(postRes.body)
+        );
+    });
+
+    it("responds with 400 and an error message when title is missing", () => {
+      return supertest(app)
+        .post("/bookmark")
+        .send({
+          style: "Listicle",
+          content: "Test new bookmark",
+        })
+        .expect(400, {
+          error: { message: 'Missing "title" in request body' },
+        });
+    });
+  });
 });

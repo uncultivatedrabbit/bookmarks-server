@@ -29,15 +29,15 @@ bookmarksRouter
       return res.status(400).send("Invalid data");
     }
     const id = uuid();
-    const bookmark = { id, title, content };
-    bookmarks.push(bookmark);
+    const newBookmark = { id, title, content };
+    BookmarkServices.insertBookmark(req.app.get("db"), newBookmark).then(
+      (bookmark) => {
+        res.status(201).json(bookmark);
+      }
+    );
     logger.info(`Bookmark with id ${id} created!`);
-
-    res
-      .status(201)
-      .location(`http://localhost:8000/bookmark/${id}`)
-      .json(bookmark);
-  });
+  })
+  .catch(next);
 
 bookmarksRouter
   .route("/bookmark/:id")
