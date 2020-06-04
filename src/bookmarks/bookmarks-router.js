@@ -26,8 +26,9 @@ bookmarksRouter
   })
   .post(bodyParser, (req, res, next) => {
     const { title, description, rating } = req.body;
-    const newBookmark = { title, description, rating };
 
+    const newBookmark = { title, description, rating };
+    // check that all values exist
     for (const [key, value] of Object.entries(newBookmark)) {
       if (value == null) {
         return res.status(400).json({
@@ -35,39 +36,60 @@ bookmarksRouter
         });
       }
     }
-    BookmarkServices.insertBookmark(req.app.get("db"), newBookmark)
+    // check to make sure rating is an int between 1-5
+    if(rating !== +(rating) || rating > 5 || rating < 1){
+      return res.status(400).json({
+        error: { message: "rating must be a number between 1 and 5" },
+      })
+    }
+    BookmarkServices.insertBookmark(req.app.get('db'), newBookmark)
       .then((bookmark) => {
         logger.info(`Bookmark created!`);
-        res.status(201).location(`/bookmark/${bookmark.id}`).json(bookmark);
+        res
+          .status(201)
+          .location(`/bookmark/${bookmark.id}`)
+          .json({
+            id: bookmark.id,
+            title: xss(bookmark.title),
+            description: xss(bookmark.description),
+            rating: +bookmark.rating,
+            date_published: bookmark.date_published,
+          });
       })
       .catch(next);
   });
 
 bookmarksRouter
   .route("/bookmark/:id")
-  .get((req, res, next) => {
-    const knexInstance = req.app.get("db");
-    BookmarkServices.getById(knexInstance, req.params.id)
+  .all((req, res, next) => {
+    BookmarkServices.getById(req.app.get('db'), req.params.id)
       .then((bookmark) => {
         if (!bookmark) {
           return res.status(404).json({
             error: { message: "Bookmark doesn't exist." },
           });
         }
-        res.json(bookmark);
+        res.bookmark = bookmark;
+        next();
       })
       .catch(next);
   })
+  .get((req, res, next) => {
+    res.json({
+      id: res.bookmark.id,
+      title: xss(res.bookmark.title),
+      description: xss(res.bookmark.description),
+      rating: +res.bookmark.rating,
+      date_published: res.bookmark.date_published,
+    });
+  })
   .delete((req, res) => {
-    const { id } = req.params;
-    const bookmarkIndex = bookmarks.findIndex((b) => String(b.id) === id);
-    if (bookmarkIndex === -1) {
-      logger.error(`Bookmark with id ${id} not found.`);
-      return res.status(400).send("Not found");
-    }
-    bookmarks.splice(bookmarkIndex, 1);
-    logger.info(`Card with id ${id} deleted!`);
-    res.status(204).end();
+    BookmarkServices.deleteBookmark(req.app.get("db"), req.params.id).then(
+      () => {
+        logger.info(`Bookmark deleted!`);
+        res.status(204).end();
+      }
+    );
   });
 
 module.exports = bookmarksRouter;

@@ -40,7 +40,7 @@ describe.only("Bookmark endpoint", function () {
     });
   });
 
-  describe.only("GET /bookmark/:id", () => {
+  describe("GET /bookmark/:id", () => {
     context("Given there are bookmarks in the database", () => {
       const testBookmarks = makeBookmarksArray();
 
@@ -68,15 +68,15 @@ describe.only("Bookmark endpoint", function () {
       beforeEach("insert malicious article", () => {
         return db.into("bookmarks").insert([maliciousBookmark]);
       });
-      it("removies XSS attack content", () => {
+      it("removes XSS attack content", () => {
         return supertest(app)
-          .get(`/bookmark/${maliciousBookmark.id}`)
+          .get(`/bookmark`)
           .expect(200)
           .expect((res) => {
-            expect(res.body.title).to.eql(
-              'Naughty naughty very naughty &lt;script&gt;alert(\"xss\");&lt;/script&gt;'
+            expect(res.body[0].title).to.eql(
+              'Naughty naughty very naughty &lt;script&gt;alert("xss");&lt;/script&gt;'
             );
-            expect(res.body.description).to.eql(
+            expect(res.body[0].description).to.eql(
               `Bad image <img src="https://url.to.file.which/does-not.exist">. But not <strong>all</strong> bad.`
             );
           });
@@ -135,6 +135,38 @@ describe.only("Bookmark endpoint", function () {
           .expect(400, {
             error: { message: `Missing ${field} in request body` },
           });
+      });
+    });
+  });
+
+  // DELTE tests
+  describe("DELETE /bookmark/:id", () => {
+    context("Given there are NO bookmarks", () => {
+      it("responds with a 404", () => {
+        const bookmarkId = 123456;
+        return supertest(app)
+          .delete(`/bookmark/${bookmarkId}`)
+          .expect(404, { error: { message: "Bookmark doesn't exist." } });
+      });
+    });
+    context("Given there are bookmarks in the db", () => {
+      const testBookmarks = makeBookmarksArray();
+
+      beforeEach("insert bookmarks", () => {
+        return db.into("bookmarks").insert(testBookmarks);
+      });
+
+      it("responds with 204 and removes the bookmark", () => {
+        const idToRemove = 2;
+        const expectedBookmarks = testBookmarks.filter(
+          (bookmark) => bookmark.id !== idToRemove
+        );
+        return supertest(app)
+          .delete(`/bookmark/${idToRemove}`)
+          .expect(204)
+          .then((res) =>
+            supertest(app).get("/bookmark").expect(expectedBookmarks)
+          );
       });
     });
   });
