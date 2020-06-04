@@ -1,10 +1,10 @@
 const express = require("express");
 const bodyParser = express.json();
 const bookmarksRouter = express.Router();
-const { v4: uuid } = require("uuid");
 const logger = require("../logger");
 const { bookmarks } = require("../store");
 const BookmarkServices = require("../bookmark-services");
+const xss = require("xss");
 
 bookmarksRouter
   .route("/bookmark")
@@ -12,32 +12,36 @@ bookmarksRouter
     const knexInstance = req.app.get("db");
     BookmarkServices.getAllBookmarks(knexInstance)
       .then((bookmark) => {
-        res.json(bookmark);
+        res.json(
+          bookmark.map((b) => ({
+            id: b.id,
+            title: xss(b.title),
+            description: xss(b.description),
+            rating: +b.rating,
+            date_published: b.date_published,
+          }))
+        );
       })
       .catch(next);
   })
-  .post(bodyParser, (req, res) => {
-    const { title, content } = req.body;
+  .post(bodyParser, (req, res, next) => {
+    const { title, description, rating } = req.body;
+    const newBookmark = { title, description, rating };
 
-    if (!title) {
-      logger.error("Title is required");
-      return res.status(400).send("Invalid data");
-    }
-
-    if (!content) {
-      logger.error("Content is required");
-      return res.status(400).send("Invalid data");
-    }
-    const id = uuid();
-    const newBookmark = { id, title, content };
-    BookmarkServices.insertBookmark(req.app.get("db"), newBookmark).then(
-      (bookmark) => {
-        res.status(201).json(bookmark);
+    for (const [key, value] of Object.entries(newBookmark)) {
+      if (value == null) {
+        return res.status(400).json({
+          error: { message: `Missing ${key} in request body` },
+        });
       }
-    );
-    logger.info(`Bookmark with id ${id} created!`);
-  })
-  .catch(next);
+    }
+    BookmarkServices.insertBookmark(req.app.get("db"), newBookmark)
+      .then((bookmark) => {
+        logger.info(`Bookmark created!`);
+        res.status(201).location(`/bookmark/${bookmark.id}`).json(bookmark);
+      })
+      .catch(next);
+  });
 
 bookmarksRouter
   .route("/bookmark/:id")

@@ -18,7 +18,7 @@ describe.only("Bookmark endpoint", function () {
   before("clean the table", () => db("bookmarks").truncate());
 
   afterEach("cleanup", () => db("bookmarks").truncate());
-
+  // GET REQUESTS
   describe("GET /bookmark", () => {
     // WHEN THERE ARE BOOKMARKS IN DB
     context("Given there are bookmarks in the database", () => {
@@ -40,7 +40,7 @@ describe.only("Bookmark endpoint", function () {
     });
   });
 
-  describe("GET /bookmark/:id", () => {
+  describe.only("GET /bookmark/:id", () => {
     context("Given there are bookmarks in the database", () => {
       const testBookmarks = makeBookmarksArray();
 
@@ -57,6 +57,32 @@ describe.only("Bookmark endpoint", function () {
       });
     });
 
+    //MALICIOUS BOOKMARK TEST
+    context("Given an XSS attack article", () => {
+      const maliciousBookmark = {
+        id: 911,
+        title: 'Naughty naughty very naughty <script>alert("xss");</script>',
+        description: `Bad image <img src="https://url.to.file.which/does-not.exist" onerror="alert(document.cookie);">. But not <strong>all</strong> bad.`,
+        rating: 0,
+      };
+      beforeEach("insert malicious article", () => {
+        return db.into("bookmarks").insert([maliciousBookmark]);
+      });
+      it("removies XSS attack content", () => {
+        return supertest(app)
+          .get(`/bookmark/${maliciousBookmark.id}`)
+          .expect(200)
+          .expect((res) => {
+            expect(res.body.title).to.eql(
+              'Naughty naughty very naughty &lt;script&gt;alert(\"xss\");&lt;/script&gt;'
+            );
+            expect(res.body.description).to.eql(
+              `Bad image <img src="https://url.to.file.which/does-not.exist">. But not <strong>all</strong> bad.`
+            );
+          });
+      });
+    });
+
     context("Given no bookmarks in the db", () => {
       it("responds with a 404", () => {
         const bookmarkId = 6854;
@@ -66,13 +92,13 @@ describe.only("Bookmark endpoint", function () {
       });
     });
   });
-
-  describe.only("POST /bookmark", () => {
-    it("creates an article, responding with 201 and the new article", function () {
+  // POST REQUESTS
+  describe("POST /bookmark", () => {
+    it("creates a bookmark, responding with 201 and the new bookmark", function () {
       const newBookmark = {
         title: "Test new bookmark",
-        style: "Listicle",
-        content: "lorem ibsum etc",
+        description: "Listicle",
+        rating: 4,
       };
 
       return supertest(app)
@@ -81,28 +107,35 @@ describe.only("Bookmark endpoint", function () {
         .expect(201)
         .expect((res) => {
           expect(res.body.title).to.eql(newBookmark.title);
-          expect(res.body.style).to.eql(newBookmark.style);
-          expect(res.body.content).to.eql(newBookmark.content);
+          expect(res.body.description).to.eql(newBookmark.description);
+          expect(res.body.rating).to.eql(newBookmark.rating);
           expect(res.body).to.have.property("id");
-          expect(res.headers.location).to.eql.apply(`/bookmarks/${res.body.id}`);
+          expect(res.headers.location).to.eql(`/bookmark/${res.body.id}`);
         })
         .then((postRes) =>
           supertest(app)
-            .get(`/bookmarks/${postRes.body.id}`)
+            .get(`/bookmark/${postRes.body.id}`)
             .expect(postRes.body)
         );
     });
+    // MISSING FIELD TESTS
+    const requiredFields = ["title", "description", "rating"];
 
-    it("responds with 400 and an error message when title is missing", () => {
-      return supertest(app)
-        .post("/bookmark")
-        .send({
-          style: "Listicle",
-          content: "Test new bookmark",
-        })
-        .expect(400, {
-          error: { message: 'Missing "title" in request body' },
-        });
+    requiredFields.forEach((field) => {
+      const newBookmark = {
+        title: "Orange County Black and Blue",
+        description: "High School Never Ends",
+        rating: 4,
+      };
+      it(`responds with 400 and an error message when the ${field} is missing`, () => {
+        delete newBookmark[field];
+        return supertest(app)
+          .post("/bookmark")
+          .send(newBookmark)
+          .expect(400, {
+            error: { message: `Missing ${field} in request body` },
+          });
+      });
     });
   });
 });
